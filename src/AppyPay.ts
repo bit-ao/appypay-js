@@ -98,18 +98,23 @@ export class AppyPay {
         const config = input.paymentMethod === PaymentMethod.aref
             ? { headers: { Accept: "application/vnd.appypay.asyncapi+json" } }
             : undefined;
-        const response = await this.client.post<CreateChargeResponse>(
-            "/charges",
-            {
-                currency: "AOA",
-                amount: input.amount,
-                description: input.description,
-                merchantTransactionId: input.merchantTransactionId,
-                paymentMethod: this.getPaymentMethod(input.paymentMethod),
-                paymentInfo: this.getPaymentInfo(input.paymentMethod, input.paymentInfo),
-            },
-            config
-        );
+
+        const body: Record<string, any> = {
+            currency: "AOA",
+            amount: input.amount,
+            description: input.description,
+            merchantTransactionId: input.merchantTransactionId,
+            paymentMethod: this.getPaymentMethod(input.paymentMethod),
+        };
+        // Só envia paymentInfo quando a referência é gerada por nós. Sem
+        // paymentInfo, a AppyPay gera a referência (gerada pelo portal).
+        const info = this.getPaymentInfo(input.paymentMethod, input.paymentInfo);
+        if (info) body.paymentInfo = info;
+        // notify é recomendado para REF (SMS/email da referência ao cliente).
+        if (input.notify) body.notify = input.notify;
+        if (input.options) body.options = input.options;
+
+        const response = await this.client.post<CreateChargeResponse>("/charges", body, config);
         return response.data;
     }
 
@@ -183,7 +188,12 @@ export class AppyPay {
     private static validate(input: CreateChargeInput): void {
         const { paymentMethod, paymentInfo } = input;
 
+        const isRef = paymentMethod === PaymentMethod.ref || paymentMethod === PaymentMethod.aref;
+
         if (!paymentInfo) {
+            // Para REF/aREF, paymentInfo é opcional: quando ausente, a referência
+            // é gerada pelo portal AppyPay (dentro do range válido da entidade).
+            if (isRef) return;
             throw new Error(`paymentInfo é obrigatório para método ${paymentMethod}`);
         }
 
