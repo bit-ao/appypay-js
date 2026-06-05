@@ -23,8 +23,6 @@ import { DiskTokenStorage } from "./storage/DiskTokenStorage";
 import type { TokenStoragePort } from "./TokenStoragePort";
 import {
     GetChargeResponseDto,
-    ListChargesQueryDto,
-    ListChargesResponseDto,
     ListReferencesQueryDto,
     ListReferencesResponseDto,
     RegisterReferenceDto,
@@ -190,18 +188,6 @@ export class AppyPay {
         }
     }
 
-    async listCharges(query?: ListChargesQueryDto): Promise<ListChargesResponseDto> {
-        await this.auth();
-        try {
-            const response = await this.client.get<ListChargesResponseDto>("/charges", {
-                params: query?.toQueryParams() ?? {},
-            });
-            return response.data ?? ({ payments: [] } as ListChargesResponseDto);
-        } catch (e) {
-            throw AppyPay.wrapAxiosError(e);
-        }
-    }
-
     async registerReference(input: RegisterReferenceDto): Promise<RegisterReferenceResponseDto> {
         if (!input.paymentMethod) {
             input.paymentMethod = this.methods?.ref ?? "";
@@ -243,19 +229,25 @@ export class AppyPay {
             ? { headers: { Accept: ASYNC_API_ACCEPT } }
             : undefined;
 
+        const body: Record<string, any> = {
+            currency: "AOA",
+            amount: input.amount,
+            description: input.description,
+            merchantTransactionId: input.merchantTransactionId,
+            paymentMethod: this.getPaymentMethod(input.paymentMethod),
+        };
+        // Só envia paymentInfo quando a referência é gerada por nós. Sem
+        // paymentInfo (REF/aREF), a AppyPay gera a referência (gerada pelo portal).
+        const info = input.paymentInfo
+            ? this.getPaymentInfo(input.paymentMethod, input.paymentInfo)
+            : undefined;
+        if (info) body.paymentInfo = info;
+        // notify é recomendado para REF (SMS/email da referência ao cliente).
+        if (input.notify) body.notify = input.notify;
+        if (input.options) body.options = input.options;
+
         try {
-            const response = await this.client.post<CreateChargeResponse>(
-                "/charges",
-                {
-                    currency: "AOA",
-                    amount: input.amount,
-                    description: input.description,
-                    merchantTransactionId: input.merchantTransactionId,
-                    paymentMethod: this.getPaymentMethod(input.paymentMethod),
-                    paymentInfo: this.getPaymentInfo(input.paymentMethod, input.paymentInfo),
-                },
-                config,
-            );
+            const response = await this.client.post<CreateChargeResponse>("/charges", body, config);
             return response.data;
         } catch (e) {
             throw AppyPay.wrapAxiosError(e);
@@ -292,7 +284,12 @@ export class AppyPay {
     private static validate(input: CreateChargeInput): void {
         const { paymentMethod, paymentInfo } = input;
 
+        const isRef = paymentMethod === PaymentMethod.ref || paymentMethod === PaymentMethod.aref;
+
         if (!paymentInfo) {
+            // Para REF/aREF, paymentInfo é opcional: quando ausente, a referência
+            // é gerada pelo portal AppyPay (dentro do range válido da entidade).
+            if (isRef) return;
             throw new Error(`paymentInfo é obrigatório para método ${paymentMethod}`);
         }
 

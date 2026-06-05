@@ -52,17 +52,21 @@ type BaseCharge = {
     smsNotification?: boolean;
     emailNotification?: boolean;
   };
-  paymentInfo: PaymentInfo;
+  // paymentInfo é declarado por cada tipo de cobrança (obrigatório para
+  // GPO/eTPA, opcional para REF — gerada pelo portal quando ausente).
 };
 
 export type RefCharge = BaseCharge & {
   paymentMethod: PaymentMethod.ref;
-  paymentInfo: PaymentInfoREF;
+  // Opcional: se omitido, a referência é gerada pelo portal AppyPay
+  // (dentro do range válido da entidade) e devolvida em response.reference.
+  paymentInfo?: PaymentInfoREF;
 };
 
 export type ARefCharge = BaseCharge & {
   paymentMethod: PaymentMethod.aref;
-  paymentInfo: PaymentInfoREF;
+  // Opcional: ver RefCharge. Sem paymentInfo => referência gerada pelo portal.
+  paymentInfo?: PaymentInfoREF;
 };
 
 export type ExpressCharge = BaseCharge & {
