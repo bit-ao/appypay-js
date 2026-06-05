@@ -248,10 +248,21 @@ export class AppyPay {
 
         try {
             const response = await this.client.post<CreateChargeResponse>("/charges", body, config);
-            return response.data;
+            return AppyPay.normalizeChargeResponse(response.data);
         } catch (e) {
             throw AppyPay.wrapAxiosError(e);
         }
+    }
+
+    // A AppyPay devolve a referência (REF) aninhada em responseStatus.reference.
+    // Expomo-la também no topo (response.reference), conforme o tipo
+    // CreateChargeResponse, para os consumidores não dependerem do aninhamento.
+    private static normalizeChargeResponse(data: CreateChargeResponse): CreateChargeResponse {
+        const nested = (data as any)?.responseStatus?.reference;
+        if (nested && !data?.reference) {
+            (data as any).reference = nested;
+        }
+        return data;
     }
 
     private static wrapAxiosError(e: unknown): AppyPayError {
